@@ -1,0 +1,25 @@
+{
+  "_comment": "Copy to config.json on the server. Token MUST come from the env file, never here.",
+  "baseUrl": "https://ilinkai.weixin.qq.com/",
+  "statePath": "/var/lib/dsh-ilink-bot/state.json",
+  "healthHost": "127.0.0.1",
+  "healthPort": 8787,
+  "longPollMs": 35000,
+  "reply": {
+    "rules": [
+      {
+        "match": "ping",
+        "reply": "pong (iLink headless bot, running on the server)"
+      },
+      {
+        "match": "/status",
+        "reply": "alive: pure-HTTP iLink bot, no WeChat GUI on this machine"
+      },
+      {
+        "startsWith": "help",
+        "reply": "commands: ping, /status, help"
+      }
+    ],
+    "defaultReply": "已收到（服务器 iLink 单聊机器人）"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "dsh-ilink-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless iLink single-chat bot: pure HTTP, runs on a Linux server, no WeChat GUI",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "gate": "node gate.mjs",
+    "gate:stale": "node stale_token_gate.mjs",
+    "gate:health": "node verify_health.mjs --selftest",
+    "gate:unit": "node unit_contract_gate.mjs --verify",
+    "gate:parse": "node verify_unit.mjs --selftest",
+    "gate:sendfail": "node sendfail_gate.mjs",
+    "gate:corrupt": "node corrupt_state_gate.mjs",
+    "gate:egress": "node egress_gate.mjs --selftest",
+    "gate:all": "node gate.mjs && node verify_deploy.mjs && node stale_token_gate.mjs && node verify_health.mjs --selftest && node unit_contract_gate.mjs --verify && node verify_unit.mjs --selftest && node sendfail_gate.mjs && node corrupt_state_gate.mjs && node egress_gate.mjs --selftest",
+    "verify": "node verify_health.mjs",
+    "start": "node bot.mjs",
+    "login": "node login.mjs",
+    "probe": "node probe_live.mjs"
+  }
+}

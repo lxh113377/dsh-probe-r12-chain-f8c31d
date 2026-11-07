@@ -1,0 +1,27 @@
+# systemd unit — #47: restart only after gate.mjs passes.
+# Install as /etc/systemd/system/dsh-ilink-bot.service
+[Unit]
+Description=DSH iLink headless single-chat bot (pure HTTP, no WeChat GUI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dshbot
+Group=dshbot
+WorkingDirectory=/opt/dsh-ilink-bot
+# Token is injected here, never stored in the repo. File must be mode 0600.
+EnvironmentFile=/etc/dsh-ilink-bot/env
+Environment=DSH_ILINK_CONFIG=/etc/dsh-ilink-bot/config.json
+ExecStart=/usr/bin/node /opt/dsh-ilink-bot/bot.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/dsh-ilink-bot
+ReadWritePaths=/var/lib/dsh-ilink-bot
+
+[Install]
+WantedBy=multi-user.target

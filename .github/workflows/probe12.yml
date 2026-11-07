@@ -1,0 +1,113 @@
+name: probe-r12-full-chain
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  fullchain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Runner identity
+        run: |
+          uname -a
+          node --version
+          echo "OFFPC-RUNNER os=$(uname -s) arch=$(uname -m)"
+          test "$(uname -s)" = Linux
+          echo HIT:RUNNER_LINUX >> .p12
+      - name: Frozen bytes positive
+        run: |
+          cd server-deploy && sha256sum -c ../provision/MANIFEST.sha256 > /tmp/frozen.out 2>&1
+          tail -3 /tmp/frozen.out
+          OKN=$(grep -c "OK$" /tmp/frozen.out)
+          test "$OKN" = 24
+          echo "FROZEN-OK n=$OKN"
+          echo HIT:FROZEN_OK >> ../.p12
+      - name: Frozen bytes negative has teeth
+        run: |
+          cp server-deploy/README.md /tmp/p12_readme.bak
+          printf "X" >> server-deploy/README.md
+          if ( cd server-deploy && sha256sum -c ../provision/MANIFEST.sha256 >/dev/null 2>&1 ); then
+            cp /tmp/p12_readme.bak server-deploy/README.md
+            echo "FREEZE-NEGCTL-FAIL drift not detected"
+            exit 1
+          fi
+          cp /tmp/p12_readme.bak server-deploy/README.md
+          echo "FREEZE-NEGCTL-OK drift detected and restored"
+          echo HIT:FROZEN_NEGCTL >> .p12
+      - name: Syntax all mjs
+        run: |
+          N=0; FAIL=0
+          for f in $(find server-deploy provision _goal-server -name "*.mjs" -type f); do
+            N=$((N+1))
+            node --check "$f" || FAIL=$((FAIL+1))
+          done
+          test "$FAIL" = 0
+          test "$N" -gt 20
+          echo "SYNTAX-OK n=$N fail=$FAIL"
+          echo HIT:SYNTAX_OK >> .p12
+      - name: Ten dev selftests
+        run: |
+          FAIL=0
+          for m in gate verify_deploy stale_token_gate verify_health sendfail_gate corrupt_state_gate provenance_gate port_gate egress_gate unit_contract_gate; do
+            node "server-deploy/$m.mjs" --selftest > "/tmp/ten_$m.out" 2>&1 || FAIL=$((FAIL+1))
+            tail -1 "/tmp/ten_$m.out"
+          done
+          test "$FAIL" = 0
+          echo "TEN-SELFTESTS-OK fail=0"
+          echo HIT:TEN_OK >> .p12
+      - name: Seven judge selftests
+        run: |
+          FAIL=0
+          for spec in "_goal-server/reboot_acceptance_gate.mjs" "provision/public_host_guard.mjs" "provision/collect_acceptance.mjs" "provision/verify_frozen.mjs" "provision/check_health.mjs" "provision/render_config.mjs" "provision/chain_dryrun_gate.mjs"; do
+            node "$spec" --selftest > /tmp/j.out 2>&1 || FAIL=$((FAIL+1))
+            tail -1 /tmp/j.out
+          done
+          test "$FAIL" = 0
+          echo "JUDGES-SELFTESTS-OK fail=0"
+          echo HIT:JUDGES_OK >> .p12
+      - name: Main judges deterministic
+        run: |
+          a=0; node provision/verify_frozen.mjs server-deploy provision/MANIFEST.sha256 > /tmp/m1.out 2>&1 || a=$?
+          b=0; bash provision/remote-provision.sh --selftest > /tmp/m2.out 2>&1 || b=$?
+          c=0; node provision/chain_dryrun_gate.mjs > /tmp/m3.out 2>&1 || c=$?
+          tail -1 /tmp/m1.out; tail -1 /tmp/m2.out; tail -3 /tmp/m3.out
+          test "$a" = 0 -a "$b" = 0 -a "$c" = 0
+          echo "MAIN-JUDGES-OK"
+          echo HIT:MAIN_OK >> .p12
+      - name: LAN and drill conditional
+        run: |
+          if ip -4 -o addr show scope global 2>/dev/null | grep -q inet; then
+            l=0; node provision/lan_health_probe.mjs > /tmp/lan.out 2>&1 || l=$?
+            d=0; node provision/acceptance_drill.mjs > /tmp/drill.out 2>&1 || d=$?
+            tail -1 /tmp/lan.out; tail -1 /tmp/drill.out
+            test "$l" = 0 -a "$d" = 0
+            echo "LAN-AND-DRILL-OK"
+          else
+            echo "LAN-SKIP no non-loopback global IPv4 on this runner (ability gap, honestly noted)"
+          fi
+          echo HIT:LAN_DONE >> .p12
+      - name: Gate tristate
+        run: |
+          e=0; node _goal-server/reboot_acceptance_gate.mjs > /tmp/g1.out 2>&1 || e=$?
+          grep -E "ACCEPTANCE=" /tmp/g1.out | head -1
+          lp=0; DSH_ACCEPT_HOST=127.0.0.1 DSH_ACCEPT_URL=http://127.0.0.1:8787/_health DSH_ACCEPT_EXPECT_CODEHASH=9f4138c534582e583a5de27e3de68950ad6f6b5881947aacee82aa77aff3c268 DSH_ACCEPT_REBOOT_BEFORE=100 DSH_ACCEPT_REBOOT_AFTER=200 DSH_ACCEPT_PC_OFF_ATTESTED=1 DSH_ACCEPT_PC_OFF_EVIDENCE=/tmp/nope node _goal-server/reboot_acceptance_gate.mjs > /tmp/g2.out 2>&1 || lp=$?
+          grep -E "ACCEPTANCE=" /tmp/g2.out | head -1
+          test "$e" = 2 -a "$lp" = 1
+          echo "GATE-TRISTATE-OK empty=NOT_PROVEN:2 loopback=FAIL:1"
+          echo HIT:TRISTATE_OK >> .p12
+      - name: Verdict with teeth
+        run: |
+          check_all() {
+            for t in RUNNER_LINUX FROZEN_OK FROZEN_NEGCTL SYNTAX_OK TEN_OK JUDGES_OK MAIN_OK TRISTATE_OK LAN_DONE; do
+              grep -qF "HIT:$t" .p12 || return 1
+            done
+            return 0
+          }
+          check_all || { echo "PROBE12-VERDICT-FAIL missing HIT token"; exit 1; }
+          cp .p12 /tmp/p12.full
+          sed -i "/HIT:FROZEN_OK/d" .p12
+          if check_all; then echo "NEGCTL-FAIL missing token still passed"; exit 1; fi
+          cp /tmp/p12.full .p12
+          echo "NEGCTL-OK missing token detected"
+          echo "PROBE12-OK frozen=24 offpc=true linux=true judges=7 ten=10 negctl=2 real_deploy=false always_on=false"
