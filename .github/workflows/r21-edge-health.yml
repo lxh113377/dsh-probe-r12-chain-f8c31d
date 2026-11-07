@@ -1,0 +1,20 @@
+name: r21-edge-health
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: off-PC GET edge health
+        run: |
+          echo "RUNNER_NAME=$RUNNER_NAME RUNNER_OS=$RUNNER_OS"
+          echo "=== POSITIVE workers.dev /_health ==="
+          curl -sS --max-time 25 -o /tmp/body.json -w "HTTP_CODE=%{http_code}" https://dsh-ilink-edge-bot.3753318894.workers.dev/_health || echo "CURL_RC_NONZERO"
+          echo
+          echo "BODY_BEGIN"
+          cat /tmp/body.json 2>/dev/null || echo "NO_BODY_FILE"
+          echo
+          echo "BODY_END"
+          echo "=== NEGATIVE CONTROL .invalid ==="
+          if curl -sS --max-time 10 https://dsh-nonexistent-9f3a7c.invalid/ >/dev/null 2>&1; then echo "NEGCTL_RESULT=FAIL_UNEXPECTED_SUCCESS"; else echo "NEGCTL_RESULT=OK_EXPECTED_FAILURE"; fi
+          echo "PROBE_DONE"
